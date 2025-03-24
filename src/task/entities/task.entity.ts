@@ -29,11 +29,11 @@ export class Task {
   })
   status: TaskStatus;
 
-  @ManyToOne(() => Project, project => project.tasks)
-  project: Project;
+  @ManyToOne(() => Project, project => project.tasks, { nullable: true })
+  project: Project | null;
 
-  @ManyToOne(() => User)
-  createdBy: User;
+  @ManyToOne(() => User, { nullable: true })
+  createdBy: User | null;
 
   @ManyToMany(() => User, user => user.tasks)
   @JoinTable()

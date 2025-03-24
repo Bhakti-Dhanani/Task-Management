@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailerModule } from '@nestjs-modules/mailer';
+import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import { join } from 'path';
 
 @Module({
@@ -23,7 +24,7 @@ import { join } from 'path';
         },
         template: {
           dir: join(__dirname, '../notification/templates'),
-          adapter: require('@nestjs-modules/mailer/dist/adapters/handlebars.adapter'),
+          adapter: new HandlebarsAdapter(),
           options: {
             strict: true,
           },

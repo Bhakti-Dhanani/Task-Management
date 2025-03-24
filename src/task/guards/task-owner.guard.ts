@@ -1,7 +1,8 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Task } from '../entities/task.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Injectable()
 export class TaskOwnerGuard implements CanActivate {
@@ -12,8 +13,12 @@ export class TaskOwnerGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const taskId = request.params.id;
-    const userId = request.user.id;
+    const userId = request.user?.id;
+    const taskId = parseInt(request.params.id, 10);
+
+    if (!userId || isNaN(taskId)) {
+      throw new ForbiddenException('Invalid request parameters');
+    }
 
     const task = await this.taskRepository.findOne({
       where: { id: taskId },
@@ -21,15 +26,18 @@ export class TaskOwnerGuard implements CanActivate {
     });
 
     if (!task) {
-      return false;
+      throw new NotFoundException('Task not found');
     }
 
-    // Allow if user is the creator or is assigned to the task
+    if (!task.createdBy) {
+      throw new ForbiddenException('Task has no creator assigned');
+    }
+
     const isCreator = task.createdBy.id === userId;
-    const isAssigned = task.assignedUsers.some(user => user.id === userId);
+    const isAssigned = task.assignedUsers?.some(user => user.id === userId) ?? false;
 
     if (!isCreator && !isAssigned) {
-      throw new ForbiddenException('You do not have permission to modify this task');
+      throw new ForbiddenException('You do not have permission to access this task');
     }
 
     return true;
