@@ -19,6 +19,7 @@ import { MailerConfigModule } from './config/mailer.module';
 import { Task } from './task/entities/task.entity';
 import { Project } from './project/entities/project.entity';
 import { Notification } from './notification/entities/notification.entity';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -49,7 +50,7 @@ import { Notification } from './notification/entities/notification.entity';
         database: configService.get<string>('database.database'),
         logging: configService.get<boolean>('database.logging'),
         synchronize: true,
-        dropSchema: true,
+        dropSchema: false,
         migrationsRun: true,
         migrations: ['dist/migrations/*.js'],
         autoLoadEntities: true,
@@ -57,7 +58,10 @@ import { Notification } from './notification/entities/notification.entity';
         ssl: false,
         extra: {
           max: 20,
-        }
+        },
+        retryAttempts: 3,
+        retryDelay: 3000,
+        keepConnectionAlive: true,
       }),
     }),
     EventEmitterModule.forRoot(),
@@ -67,6 +71,7 @@ import { Notification } from './notification/entities/notification.entity';
     ProjectModule,
     TaskModule,
     NotificationModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [
