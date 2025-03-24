@@ -1,26 +1,49 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable,ForbiddenException,NotFoundException} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import {UpdateRoleDto } from './dto/update-user.dto';
+import { User, UserRole } from './entities/user.entity';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 
 @Injectable()
 export class UsersService {
-  create(createUserDto: CreateUserDto) {
-    return 'This action adds a new user';
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ){}
+  async findAllUsers(page: number = 1, limit: number = 10): Promise<{ users: Partial<User>[], total: number }> {
+    const [users, total] = await this.userRepository.findAndCount({
+      select: ['id', 'firstName', 'lastName', 'email', 'role', 'createdAt', 'updatedAt'],
+      skip: (page - 1) * limit,
+      take: limit,
+      order: {
+        createdAt: 'DESC'
+      }
+    });
+
+    return {
+      users,
+      total
+    };
   }
 
-  findAll() {
-    return `This action returns all users`;
-  }
+  async changeUserRole(adminId: number, userId: number, updateRoleDto: UpdateRoleDto): Promise<User> {
+    const admin = await this.userRepository.findOne({ where: { id: adminId } });
 
-  findOne(id: number) {
-    return `This action returns a #${id} user`;
-  }
+    if (!admin || admin.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only Admins can change roles');
+    }
 
-  update(id: number, updateUserDto: UpdateUserDto) {
-    return `This action updates a #${id} user`;
-  }
+    if (adminId === userId) {
+      throw new ForbiddenException('You cannot change your own role');
+    }
 
-  remove(id: number) {
-    return `This action removes a #${id} user`;
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.role = updateRoleDto.role;
+    return this.userRepository.save(user);
   }
 }
