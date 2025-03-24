@@ -1,5 +1,7 @@
-import{IsString,IsNotEmpty,IsEmail,MinLength}from 'class-validator'
-export class registrationDto{
+import { IsString, IsNotEmpty, IsEmail, MinLength, IsEnum } from 'class-validator';
+import { UserRole } from 'src/users/entities/user.entity';
+
+export class registrationDto {
     @IsString()
     @IsNotEmpty()
     firstName: string;
@@ -15,5 +17,7 @@ export class registrationDto{
     @MinLength(8)
     password: string;
 
+    @IsEnum(UserRole)
+    role: UserRole;
 }
  

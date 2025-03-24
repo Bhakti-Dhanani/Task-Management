@@ -1,30 +1,29 @@
-import { Module, NestModule,MiddlewareConsumer, Inject } from '@nestjs/common';
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { User } from 'src/users/entities/user.entity';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { UsersModule } from 'src/users/users.module';
-import { JwtModule } from '@nestjs/jwt';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { AuthMiddleware } from 'src/common/middelware/auth.middleware';
-
+import { User } from '../users/entities/user.entity';
 
 @Module({
-  imports:[UsersModule,TypeOrmModule.forFeature([User]),
-JwtModule.registerAsync({
-  imports:[ConfigModule],
-  inject:[ConfigService],
-  useFactory: async (configservice:ConfigService) =>({
-    secret: configservice.get('jwt.secret'),
-        signOptions: { expiresIn: configservice.get('jwt.expiresIn') },
-  })
-}),],
+  imports: [
+    PassportModule,
+    TypeOrmModule.forFeature([User]),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get('jwt.secret'),
+        signOptions: { expiresIn: configService.get('jwt.signOptions.expiresIn') },
+      }),
+      inject: [ConfigService],
+    }),
+  ],
   controllers: [AuthController],
-  providers: [AuthService],
-  exports: [AuthService, JwtModule],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard],
+  exports: [JwtModule, JwtAuthGuard],
 })
-export class AuthModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(AuthMiddleware).forRoutes('*'); // Apply middleware here
-  }
-}
+export class AuthModule {}
