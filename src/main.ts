@@ -30,6 +30,17 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  await app.listen(3000);
+  // Try to use port 3000, if not available use 3001
+  try {
+    await app.listen(3000);
+    console.log('Application is running on: http://localhost:3000');
+  } catch (error) {
+    if (error.code === 'EADDRINUSE') {
+      await app.listen(3001);
+      console.log('Application is running on: http://localhost:3001');
+    } else {
+      throw error;
+    }
+  }
 }
 bootstrap();

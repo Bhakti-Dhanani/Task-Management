@@ -56,7 +56,16 @@ export class NotificationService {
 
   async createTaskCompletedNotification(task: Task) {
     const project = await task.project;
+    
+    if (!project) {
+      throw new Error('Task is not associated with any project');
+    }
+
     const manager = await project.assignedManager;
+    
+    if (!manager) {
+      throw new Error('Project has no assigned manager');
+    }
 
     const notification = this.notificationRepository.create({
       title: 'Task Completed',
@@ -82,8 +91,14 @@ export class NotificationService {
   }
 
   async createProjectCompletedNotification(project: Project) {
+    if (!project || !project.title) {
+      throw new Error('Invalid project data');
+    }
+
     const admin = await this.userRepository.findOne({ where: { role: UserRole.ADMIN } });
-    if (!admin) return;
+    if (!admin) {
+      throw new Error('No admin user found in the system');
+    }
 
     const notification = this.notificationRepository.create({
       title: 'Project Completed',
@@ -103,7 +118,7 @@ export class NotificationService {
       template: 'project-completed',
       context: {
         projectTitle: project.title,
-        projectDescription: project.description,
+        projectDescription: project.description || 'No description provided',
       },
     });
   }

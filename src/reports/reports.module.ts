@@ -9,6 +9,8 @@ import { MailerModule } from '@nestjs-modules/mailer';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import { join } from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { NotificationModule } from '../notification/notification.module';
+import { PdfModule } from '../pdf/pdf.module';
 
 @Module({
   imports: [
@@ -38,9 +40,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         },
       }),
     }),
+    NotificationModule,
+    PdfModule,
   ],
   controllers: [ReportsController],
   providers: [ReportsService],
-  exports: [ReportsService],
+  exports: [ReportsService]
 })
 export class ReportsModule {} 
