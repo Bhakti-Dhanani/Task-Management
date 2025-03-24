@@ -10,14 +10,18 @@ export const databaseConfig = registerAs('database', () => ({
   database: process.env.DB_NAME || 'taskManagement',
   logging: process.env.DB_LOGGING === 'true',
   synchronize: true,
-  dropSchema: true, // This will drop all tables before creating new ones
+  dropSchema: false, // Changed to false to preserve data
   migrationsTableName: 'migrations',
   migrations: ['dist/migrations/*.js'], 
   entities: ['dist/**/*.entity.js'], // Load entity files
   ssl: false,
   extra: {
     max: 20, // Maximum number of connections in the pool
-  }
+  },
+  retryAttempts: 3,
+  retryDelay: 3000, // 3 seconds
+  autoLoadEntities: true,
+  keepConnectionAlive: true,
 }));
 
 const databaseSettings = databaseConfig() as unknown as DataSourceOptions;
