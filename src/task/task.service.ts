@@ -4,9 +4,9 @@ import { Repository } from 'typeorm';
 import { Task } from './entities/task.entity';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
-import { User } from 'src/users/entities/user.entity';
-import { Project } from 'src/project/entities/project.entity';
-import { UserRole } from 'src/users/entities/user.entity';
+import { User } from '../users/entities/user.entity';
+import { Project } from '../project/entities/project.entity';
+import { UserRole } from '../users/entities/user.entity';
 import { TaskStatus } from './entities/task.entity';
 import { NotificationService } from '../notification/notification.service';
 
@@ -58,14 +58,22 @@ export class TaskService {
 
   private async validateTaskAccess(task: Task, userId: number): Promise<void> {
     const user = await this.userRepository.findOne({ 
-      where: { 
-        id: userId,
-        role: UserRole.MANAGER 
-      }
+      where: { id: userId }
     });
     
     if (!user) {
-      throw new ForbiddenException('Only managers can modify tasks');
+      throw new ForbiddenException('User not found');
+    }
+
+    // Allow access if user is a manager
+    if (user.role === UserRole.MANAGER) {
+      return;
+    }
+
+    // For non-managers, check if they are assigned to the task
+    const isAssigned = task.assignedUsers.some(assignedUser => assignedUser.id === userId);
+    if (!isAssigned) {
+      throw new ForbiddenException('You do not have permission to modify this task');
     }
   }
 
@@ -155,49 +163,88 @@ export class TaskService {
   }
 
   async update(id: number, updateTaskDto: UpdateTaskDto, userId: number) {
-    const task = await this.taskRepository.findOne({
-      where: { id },
-      relations: ['project', 'project.assignedManager', 'assignedUsers'],
-    });
+    try {
+      const task = await this.taskRepository.findOne({
+        where: { id },
+        relations: ['project', 'project.assignedManager', 'assignedUsers'],
+      });
 
-    if (!task) {
-      throw new NotFoundException('Task not found');
-    }
-
-    // Validate user access
-    await this.validateTaskAccess(task, userId);
-
-    // Check if task status is being updated to completed
-    if (updateTaskDto.status === TaskStatus.COMPLETED && task.status !== TaskStatus.COMPLETED) {
-      await this.notificationService.createTaskCompletedNotification(task);
-    }
-
-    // Check for new assigned users
-    if (updateTaskDto.assignedUserIds) {
-      const newAssignedUsers = await Promise.all(
-        updateTaskDto.assignedUserIds
-          .filter(userId => !task.assignedUsers.some(user => user.id === userId))
-          .map(userId => this.userRepository.findOne({ where: { id: userId } }))
-      );
-
-      const validNewUsers = newAssignedUsers.filter(user => user !== null);
-
-      for (const user of validNewUsers) {
-        await this.notificationService.createTaskAssignedNotification(task, user);
+      if (!task) {
+        throw new NotFoundException('Task not found');
       }
 
-      if (validNewUsers.length > 0) {
-        task.assignedUsers = [...task.assignedUsers, ...validNewUsers];
+      // Validate user access
+      await this.validateTaskAccess(task, userId);
+
+      // Update project if provided
+      if (updateTaskDto.projectId) {
+        const project = await this.projectRepository.findOne({
+          where: { id: updateTaskDto.projectId },
+          relations: ['assignedManager'],
+        });
+
+        if (!project) {
+          throw new NotFoundException('Project not found');
+        }
+
+        task.project = project;
       }
+
+      // Handle assigned users update
+      if (updateTaskDto.assignedUserIds) {
+        const newAssignedUsers = await Promise.all(
+          updateTaskDto.assignedUserIds.map(userId => 
+            this.userRepository.findOne({ where: { id: userId } })
+          )
+        );
+
+        const validNewUsers = newAssignedUsers.filter(user => user !== null);
+
+        if (validNewUsers.length === 0) {
+          throw new BadRequestException('No valid assigned users provided');
+        }
+
+        // Check for overlapping tasks for new users
+        await Promise.all(
+          validNewUsers.map(user => 
+            this.checkOverlappingTasks(user.id, updateTaskDto.dueDate || task.dueDate)
+          )
+        );
+
+        // Send notifications to newly assigned users
+        const newUsers = validNewUsers.filter(
+          newUser => !task.assignedUsers.some(existingUser => existingUser.id === newUser.id)
+        );
+
+        for (const user of newUsers) {
+          await this.notificationService.createTaskAssignedNotification(task, user);
+        }
+
+        task.assignedUsers = validNewUsers;
+      }
+
+      // Check if task status is being updated to completed
+      if (updateTaskDto.status === TaskStatus.COMPLETED && task.status !== TaskStatus.COMPLETED) {
+        await this.notificationService.createTaskCompletedNotification(task);
+      }
+
+      // Update other fields
+      if (updateTaskDto.title) task.title = updateTaskDto.title;
+      if (updateTaskDto.description) task.description = updateTaskDto.description;
+      if (updateTaskDto.dueDate) task.dueDate = updateTaskDto.dueDate;
+      if (updateTaskDto.status) task.status = updateTaskDto.status;
+
+      const updatedTask = await this.taskRepository.save(task);
+      return updatedTask;
+    } catch (error) {
+      console.error('Error in update:', error);
+      if (error instanceof NotFoundException || 
+          error instanceof ForbiddenException || 
+          error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`Failed to update task: ${error.message}`);
     }
-
-    // Update other fields
-    if (updateTaskDto.title) task.title = updateTaskDto.title;
-    if (updateTaskDto.description) task.description = updateTaskDto.description;
-    if (updateTaskDto.dueDate) task.dueDate = updateTaskDto.dueDate;
-    if (updateTaskDto.status) task.status = updateTaskDto.status;
-
-    return this.taskRepository.save(task);
   }
 
   async remove(id: number, userId: number): Promise<void> {

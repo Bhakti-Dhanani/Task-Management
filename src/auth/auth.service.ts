@@ -36,30 +36,36 @@ export class AuthService {
         return { message: 'User registered successfully' };
     }
 
-    async login(loginDto: LoginDto): Promise<{ user: User; token: string }> {
-        const user = await this.userRepository.findOne({
-            where: { email: loginDto.email },
-        });
+    async validateUser(email: string, password: string): Promise<any> {
+        const user = await this.userRepository.findOne({ where: { email } });
+        if (user && await bcrypt.compare(password, user.password)) {
+            const { password, ...result } = user;
+            return result;
+        }
+        return null;
+    }
 
+    async login(loginDto: LoginDto) {
+        const user = await this.validateUser(loginDto.email, loginDto.password);
         if (!user) {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+        // Update last login time
+        user.lastLogin = new Date();
+        await this.userRepository.save(user);
 
-        if (!isPasswordValid) {
-            throw new UnauthorizedException('Invalid credentials');
-        }
-
-        const payload = { 
-            sub: user.id, 
-            email: user.email, 
-            role: user.role,
-            firstName: user.firstName,
-            lastName: user.lastName
+        const payload = { email: user.email, sub: user.id, role: user.role };
+        return {
+            access_token: this.jwtService.sign(payload),
+            user: {
+                id: user.id,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                role: user.role,
+                lastLogin: user.lastLogin
+            }
         };
-        const token = this.jwtService.sign(payload);
-
-        return { user, token };
     }
 }

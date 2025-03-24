@@ -45,12 +45,7 @@ export class NotificationService {
     await this.mailerService.sendMail({
       to: assignedUser.email,
       subject: 'New Task Assigned',
-      template: 'task-assigned',
-      context: {
-        taskTitle: task.title,
-        taskDescription: task.description,
-        dueDate: task.dueDate,
-      },
+      text: `You have been assigned to task: ${task.title}\n\nDescription: ${task.description}\nDue Date: ${task.dueDate}`,
     });
   }
 
@@ -82,11 +77,7 @@ export class NotificationService {
     await this.mailerService.sendMail({
       to: manager.email,
       subject: 'Task Completed',
-      template: 'task-completed',
-      context: {
-        taskTitle: task.title,
-        projectTitle: project.title,
-      },
+      text: `Task "${task.title}" in project "${project.title}" has been completed.`,
     });
   }
 
@@ -115,11 +106,7 @@ export class NotificationService {
     await this.mailerService.sendMail({
       to: admin.email,
       subject: 'Project Completed',
-      template: 'project-completed',
-      context: {
-        projectTitle: project.title,
-        projectDescription: project.description || 'No description provided',
-      },
+      text: `Project "${project.title}" has been completed.\n\nDescription: ${project.description || 'No description provided'}`,
     });
   }
 
