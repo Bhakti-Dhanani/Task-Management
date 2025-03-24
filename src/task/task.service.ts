@@ -69,7 +69,7 @@ export class TaskService {
     }
   }
 
-  async create(createTaskDto: CreateTaskDto) {
+  async create(createTaskDto: CreateTaskDto, creatorId: number) {
     const project = await this.projectRepository.findOne({
       where: { id: createTaskDto.projectId },
       relations: ['assignedManager'],
@@ -80,22 +80,44 @@ export class TaskService {
     }
 
     // Validate that the creator is a manager
-    await this.validateManager(createTaskDto.creatorId);
+    const creator = await this.validateManager(creatorId);
+
+    // Create assigned users array
+    const assignedUsers = await Promise.all(
+      createTaskDto.assignedUserIds.map(userId =>
+        this.userRepository.findOne({ where: { id: userId } })
+      )
+    );
+
+    // Filter out any null values (users not found)
+    const validAssignedUsers = assignedUsers.filter(user => user !== null);
+
+    if (validAssignedUsers.length === 0) {
+      throw new BadRequestException('No valid assigned users provided');
+    }
+
+    // Check for overlapping tasks for each assigned user
+    await Promise.all(
+      validAssignedUsers.map(user => 
+        this.checkOverlappingTasks(user.id, createTaskDto.dueDate)
+      )
+    );
 
     const task = this.taskRepository.create({
-      ...createTaskDto,
+      title: createTaskDto.title,
+      description: createTaskDto.description,
+      dueDate: createTaskDto.dueDate,
+      status: createTaskDto.status || TaskStatus.PENDING,
       project,
-      status: TaskStatus.PENDING,
+      createdBy: creator,
+      assignedUsers: validAssignedUsers
     });
 
     const savedTask = await this.taskRepository.save(task);
 
     // Send notifications to assigned users
-    for (const userId of createTaskDto.assignedUserIds) {
-      const assignedUser = await this.userRepository.findOne({ where: { id: userId } });
-      if (assignedUser) {
-        await this.notificationService.createTaskAssignedNotification(savedTask, assignedUser);
-      }
+    for (const user of validAssignedUsers) {
+      await this.notificationService.createTaskAssignedNotification(savedTask, user);
     }
 
     return savedTask;
@@ -108,22 +130,34 @@ export class TaskService {
   }
 
   async findOne(id: number): Promise<Task> {
-    const task = await this.taskRepository.findOne({
-      where: { id },
-      relations: ['project', 'createdBy', 'assignedUsers'],
-    });
+    try {
+      const task = await this.taskRepository.findOne({
+        where: { id },
+        relations: {
+          project: true,
+          createdBy: true,
+          assignedUsers: true
+        },
+      });
 
-    if (!task) {
-      throw new NotFoundException(`Task with ID ${id} not found`);
+      if (!task) {
+        throw new NotFoundException(`Task with ID ${id} not found`);
+      }
+
+      return task;
+    } catch (error) {
+      console.error('Error in findOne:', error);
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException(`Error retrieving task: ${error.message}`);
     }
-
-    return task;
   }
 
   async update(id: number, updateTaskDto: UpdateTaskDto, userId: number) {
     const task = await this.taskRepository.findOne({
       where: { id },
-      relations: ['project', 'project.assignedManager'],
+      relations: ['project', 'project.assignedManager', 'assignedUsers'],
     });
 
     if (!task) {
@@ -140,19 +174,29 @@ export class TaskService {
 
     // Check for new assigned users
     if (updateTaskDto.assignedUserIds) {
-      const newAssignedUsers = updateTaskDto.assignedUserIds.filter(
-        userId => !task.assignedUsers.some(user => user.id === userId),
+      const newAssignedUsers = await Promise.all(
+        updateTaskDto.assignedUserIds
+          .filter(userId => !task.assignedUsers.some(user => user.id === userId))
+          .map(userId => this.userRepository.findOne({ where: { id: userId } }))
       );
 
-      for (const userId of newAssignedUsers) {
-        const assignedUser = await this.userRepository.findOne({ where: { id: userId } });
-        if (assignedUser) {
-          await this.notificationService.createTaskAssignedNotification(task, assignedUser);
-        }
+      const validNewUsers = newAssignedUsers.filter(user => user !== null);
+
+      for (const user of validNewUsers) {
+        await this.notificationService.createTaskAssignedNotification(task, user);
+      }
+
+      if (validNewUsers.length > 0) {
+        task.assignedUsers = [...task.assignedUsers, ...validNewUsers];
       }
     }
 
-    Object.assign(task, updateTaskDto);
+    // Update other fields
+    if (updateTaskDto.title) task.title = updateTaskDto.title;
+    if (updateTaskDto.description) task.description = updateTaskDto.description;
+    if (updateTaskDto.dueDate) task.dueDate = updateTaskDto.dueDate;
+    if (updateTaskDto.status) task.status = updateTaskDto.status;
+
     return this.taskRepository.save(task);
   }
 

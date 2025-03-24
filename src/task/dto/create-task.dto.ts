@@ -31,5 +31,6 @@ export class CreateTaskDto {
   projectId: number;
 
   @IsNumber()
-  creatorId: number;
+  @IsOptional()
+  creatorId?: number;
 }

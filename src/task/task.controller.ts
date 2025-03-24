@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, BadRequestException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { TaskService } from './task.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
@@ -19,9 +19,8 @@ export class TaskController {
 
   @Post()
   @Roles(UserRole.MANAGER)
-  create(@Body() createTaskDto: CreateTaskDto, @Req() req: RequestWithUser) {
-    createTaskDto.creatorId = req.user.id;
-    return this.taskService.create(createTaskDto);
+  async create(@Body() createTaskDto: CreateTaskDto, @Req() req: RequestWithUser) {
+    return this.taskService.create(createTaskDto, req.user.id);
   }
 
   @Get()
@@ -30,8 +29,21 @@ export class TaskController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.taskService.findOne(+id);
+  @UseGuards(JwtAuthGuard)
+  async findOne(@Param('id') id: string, @Req() req: RequestWithUser) {
+    try {
+      const taskId = parseInt(id, 10);
+      if (isNaN(taskId)) {
+        throw new BadRequestException('Invalid task ID format');
+      }
+      return await this.taskService.findOne(taskId);
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error in findOne controller:', error);
+      throw new InternalServerErrorException('An error occurred while retrieving the task');
+    }
   }
 
   @Patch(':id')
